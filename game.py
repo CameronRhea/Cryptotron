@@ -9,10 +9,8 @@ import numpy as np
 import re
 
 
-# Initialize pygame
 pygame.init()
 
-# Constants
 WIDTH, HEIGHT = 1800, 1000
 BACKGROUND_COLOR = (30, 30, 50)
 TEXT_COLOR = (240, 240, 240)
@@ -25,54 +23,68 @@ DARK_COLOR = (20, 20, 30)
 BUTTON_COLOR = (80, 80, 120)
 BUTTON_HOVER_COLOR = (100, 100, 150)
 
-# Font setup
+# setup fonts
 TITLE_FONT = pygame.font.SysFont('Arial', 36)
 MAIN_FONT = pygame.font.SysFont('Arial', 28)
 LETTER_FONT = pygame.font.SysFont('Courier New', 28)
 BUTTON_FONT = pygame.font.SysFont('Arial', 22)
 SMALL_FONT = pygame.font.SysFont('Arial', 16)
 
-# Game state
+
 class GameState:
     def __init__(self):
+        self.data = self.load_data()
         self.quotes = self.load_quotes()
-        self.level = 1
+        self.quote_num = 1
         self.score = 0
-        self.time_remaining = 300  # 5 minutes
+        self.time_elapsed = 0
         self.hints_remaining = 3
         self.new_game()
+
+    def load_data(self):
+        # with open('quotes.pkl', 'rb') as f:
+        #     data = pickle.load(f)
+        # quotes = list(data['quote_cleaned'])
+
+        data = [
+            {
+                'quote_cleaned' : 'Here is my game',
+                'Author' : '-- Me'
+            }
+        ]
+        data_df = pd.DataFrame(data)
+
+        return data_df
     
     def load_quotes(self):
 
-        with open('quotes.pkl', 'rb') as f:
-            data = pickle.load(f)
-        quotes = list(data['quote_cleaned'])
+        # with open('quotes.pkl', 'rb') as f:
+        #     data = pickle.load(f)
+        # quotes = list(data['quote_cleaned'])
+
+        quotes = self.data['quote_cleaned'].tolist()
 
         return quotes
+    
+    def get_author(self, quote):
+        author = self.data.loc[self.data['quote_cleaned'] == quote]['Author'].iloc[0]
+        return author
     
     def new_game(self):
         """Set up a new game with a random quote and cipher"""
         self.plaintext = random.choice(self.quotes).upper()
-        
-        # Decide on cipher type (50% chance for each)
-        self.is_shift_cipher = random.choice([True, False])
-        
-        if self.is_shift_cipher:
-            # Create a shift cipher
-            self.shift_value = random.randint(1, 25)
-            self.ciphertext = self.apply_shift_cipher(self.plaintext, self.shift_value)
-            self.cipher_type_name = "Shift Cipher"
-        else:
-            # Create a substitution cipher
-            self.substitution_map = self.generate_substitution_map()
-            self.ciphertext = self.apply_substitution_cipher(self.plaintext, self.substitution_map)
-            self.cipher_type_name = "Substitution Cipher"
+        self.author = self.get_author(self.plaintext.lower()) 
+                
+        # Create a substitution cipher
+        self.substitution_map = self.generate_substitution_map()
+        self.ciphertext = self.apply_substitution_cipher(self.plaintext, self.substitution_map)
         
         # Initialize the player's guesses
         self.player_map = {char: '' for char in set(self.ciphertext) if char.isalpha()}
         self.selected_cipher_char = None
-        self.message = f"Level {self.level}: Decrypt the {self.cipher_type_name}"
+        self.message = f"Quote {self.quote_num}: Decrypt the substitution cipher"
         self.game_won = False
+        self.time_elapsed = 0  # Reset timer
     
     def apply_shift_cipher(self, text, shift):
         """Apply a Caesar/shift cipher to the text"""
@@ -91,6 +103,10 @@ class GameState:
         alphabet = list(string.ascii_uppercase)
         shuffled = list(string.ascii_uppercase)
         random.shuffle(shuffled)
+        
+        # Ensure at least 5 letters are different
+        while sum(1 for a, b in zip(alphabet, shuffled) if a == b) > 21:
+            random.shuffle(shuffled)
             
         return {a: b for a, b in zip(alphabet, shuffled)}
     
@@ -108,9 +124,11 @@ class GameState:
         """Check if the player's solution is correct"""
         decrypted = self.get_current_decryption()
         if decrypted == self.plaintext:
-            self.score += 100 + (self.time_remaining // 10) + (50 if self.is_shift_cipher else 100)
+            # Score calculation now based on hints used
+            hint_bonus = self.hints_remaining * 50
+            self.score += 100 + hint_bonus # + cipher_bonus
             self.game_won = True
-            self.message = f"Correct! +{100 + (self.time_remaining // 10) + (50 if self.is_shift_cipher else 100)} points"
+            self.message = f"Correct! +{100 + hint_bonus} points. Time: {self.format_time(self.time_elapsed)}"
             return True
         return False
     
@@ -138,10 +156,6 @@ class GameState:
         for cipher_char in self.player_map:
             if self.player_map[cipher_char] == '':
                 incorrect_chars.append(cipher_char)
-            elif self.is_shift_cipher:
-                plain_char = chr((ord(cipher_char) - ord('A') - self.shift_value) % 26 + ord('A'))
-                if self.player_map[cipher_char] != plain_char:
-                    incorrect_chars.append(cipher_char)
             else:
                 # For substitution cipher, find the key for the value
                 correct_plain_char = None
@@ -160,15 +174,11 @@ class GameState:
         # Choose a random letter to reveal
         cipher_char = random.choice(incorrect_chars)
         
-        # Find the correct mapping
-        if self.is_shift_cipher:
-            plain_char = chr((ord(cipher_char) - ord('A') - self.shift_value) % 26 + ord('A'))
-        else:
-            # For substitution cipher, find the key for the value
-            for k, v in self.substitution_map.items():
-                if v == cipher_char:
-                    plain_char = k
-                    break
+        # For substitution cipher, find the key for the value
+        for k, v in self.substitution_map.items():
+            if v == cipher_char:
+                plain_char = k
+                break
         
         self.player_map[cipher_char] = plain_char
         self.hints_remaining -= 1
@@ -176,6 +186,12 @@ class GameState:
         
         # Check if the solution is correct after adding the hint
         self.check_solution()
+    
+    def format_time(self, seconds):
+        """Format seconds into mm:ss format"""
+        minutes = int(seconds) // 60
+        secs = int(seconds) % 60
+        return f"{minutes:02}:{secs:02}"
 
 # Game UI Elements
 class Button:
@@ -236,6 +252,25 @@ class LetterBox:
     def check_click(self, pos):
         return self.rect.collidepoint(pos) and self.letter.isalpha()
 
+# Helper function to wrap text
+def wrap_text(text, font, max_width):
+    """Wrap text to fit within a given width"""
+    words = text.split(' ')
+    lines = []
+    current_line = words[0]
+    
+    for word in words[1:]:
+        test_line = current_line + ' ' + word
+        width, _ = font.size(test_line)
+        if width <= max_width:
+            current_line = test_line
+        else:
+            lines.append(current_line)
+            current_line = word
+    
+    lines.append(current_line)  # Add the last line
+    return lines
+
 # Main Game Function
 def main():
     # Create game window
@@ -249,7 +284,7 @@ def main():
     hint_button = Button(WIDTH - 150, 20, 130, 40, "Use Hint", lambda: game.use_hint())
     new_game_button = Button(WIDTH - 150, 70, 130, 40, "New Quote", lambda: game.new_game())
     check_button = Button(WIDTH - 150, 120, 130, 40, "Check Solution", lambda: game.check_solution())
-    next_level_button = Button(WIDTH//2 - 65, HEIGHT//2 + 50, 130, 40, "Next Level", 
+    next_level_button = Button(WIDTH//2 - 65, HEIGHT//2 + 120, 130, 40, "Next Quote", 
                               lambda: next_level(game))
     
     # Define the alphabet position at the bottom of the screen 
@@ -292,8 +327,6 @@ def main():
         """Advance to the next level"""
         game.level += 1
         game.new_game()
-        game.time_remaining = 300  # Reset timer
-        game.hints_remaining = 3   # Reset hints
         update_letter_boxes()
     
     def update_letter_boxes():
@@ -356,14 +389,9 @@ def main():
         dt = (current_time - last_time) / 1000.0  # Convert to seconds
         last_time = current_time
         
-        # Reduce time if game is active
-        if not game.game_won and game.time_remaining > 0:
-            game.time_remaining -= dt
-        
-        # Time's up
-        if game.time_remaining <= 0 and not game.game_won:
-            game.time_remaining = 0
-            game.message = "Time's up! Game over."
+        # Increment time if game is active
+        if not game.game_won:
+            game.time_elapsed += dt
         
         # Handle events
         mouse_pos = pygame.mouse.get_pos()
@@ -405,7 +433,7 @@ def main():
         screen.fill(BACKGROUND_COLOR)
         
         # Draw UI elements
-        title_surf = TITLE_FONT.render("Cipher Decryption Game", True, TEXT_COLOR)
+        title_surf = TITLE_FONT.render("Cryptotron", True, TEXT_COLOR)
         screen.blit(title_surf, (20, 20))
         
         # Draw game status
@@ -416,21 +444,17 @@ def main():
         score_surf = MAIN_FONT.render(f"Score: {game.score}", True, TEXT_COLOR)
         screen.blit(score_surf, (20, 110))
         
-        # Draw remaining time
-        minutes = int(game.time_remaining) // 60
-        seconds = int(game.time_remaining) % 60
-        time_color = WRONG_COLOR if game.time_remaining < 60 else TEXT_COLOR
-        time_surf = MAIN_FONT.render(f"Time: {minutes:02}:{seconds:02}", True, time_color)
+        # Draw elapsed time - now counts up instead of down
+        minutes = int(game.time_elapsed) // 60
+        seconds = int(game.time_elapsed) % 60
+        time_surf = MAIN_FONT.render(f"Time: {minutes:02}:{seconds:02}", True, TEXT_COLOR)
         screen.blit(time_surf, (200, 110))
         
         # Draw hints remaining
         hints_surf = MAIN_FONT.render(f"Hints: {game.hints_remaining}", True, TEXT_COLOR)
         screen.blit(hints_surf, (350, 110))
         
-        # Draw cipher type
-        type_surf = MAIN_FONT.render(f"Type: {game.cipher_type_name}", True, TEXT_COLOR)
-        screen.blit(type_surf, (500, 110))
-        
+
         # Determine how many lines we have from the letter boxes
         max_line_idx = 0
         for box in letter_boxes:
@@ -438,38 +462,19 @@ def main():
                 # Calculate line index from y position
                 line_idx = (box.rect.y - 180) // 60
                 max_line_idx = max(max_line_idx, line_idx)
-        
-        # Draw letter boxes
-        # cipher_label = MAIN_FONT.render("Cipher text:", True, TEXT_COLOR)
-        # screen.blit(cipher_label, (50, 180))
-        
-        # plain_label = MAIN_FONT.render("Your decryption:", True, TEXT_COLOR)
-        # screen.blit(plain_label, (50, 130))
+
         
         for box in letter_boxes:
             box.draw(screen, game.player_map)
         
         # Draw current decrypted text status - position below all lines
         base_y = 180 + (max_line_idx + 1) * 60 + 20
-        decryption_surf = MAIN_FONT.render("Plaintext:", True, TEXT_COLOR)
+        decryption_surf = MAIN_FONT.render("Current decryption:", True, TEXT_COLOR)
         screen.blit(decryption_surf, (50, base_y))
         
         # Draw the actual decrypted text - wrap it if needed
         current_text = game.get_current_decryption()
-        wrapped_text = []
-        
-        # Simple text wrapping
-        line = ""
-        for word in current_text.split():
-            test_line = line + " " + word if line else word
-            if MAIN_FONT.size(test_line)[0] > WIDTH - 100:
-                wrapped_text.append(line)
-                line = word
-            else:
-                line = test_line
-        
-        if line:
-            wrapped_text.append(line)
+        wrapped_text = wrap_text(current_text, MAIN_FONT, WIDTH - 100)
         
         for i, line in enumerate(wrapped_text):
             text_surf = MAIN_FONT.render(line, True, HIGHLIGHT_COLOR)
@@ -511,13 +516,32 @@ def main():
             screen.blit(overlay, (0, 0))
             
             # Draw win message
-            win_surf = TITLE_FONT.render(f"Great job! Level {game.level} completed!", True, CORRECT_COLOR)
-            win_rect = win_surf.get_rect(center=(WIDTH//2, HEIGHT//2 - 50))
+            win_surf = TITLE_FONT.render(f"Cipher Solved!", True, CORRECT_COLOR)
+            win_rect = win_surf.get_rect(center=(WIDTH//2, HEIGHT//2 - 150))
             screen.blit(win_surf, win_rect)
             
+            # Display final time
+            time_surf = MAIN_FONT.render(f"Time: {game.format_time(game.time_elapsed)}", True, TEXT_COLOR)
+            time_rect = time_surf.get_rect(center=(WIDTH//2, HEIGHT//2 - 100))
+            screen.blit(time_surf, time_rect)
+            
+            # Display score
             score_surf = MAIN_FONT.render(f"Score: {game.score}", True, TEXT_COLOR)
-            score_rect = score_surf.get_rect(center=(WIDTH//2, HEIGHT//2))
+            score_rect = score_surf.get_rect(center=(WIDTH//2, HEIGHT//2 - 70))
             screen.blit(score_surf, score_rect)
+            
+            # Display full quote and author
+            quote_lines = wrap_text(f'"{game.plaintext}"', MAIN_FONT, WIDTH - 200)
+            for i, line in enumerate(quote_lines):
+                quote_surf = MAIN_FONT.render(line, True, HIGHLIGHT_COLOR)
+                quote_rect = quote_surf.get_rect(center=(WIDTH//2, HEIGHT//2 - 20 + i * 30))
+                screen.blit(quote_surf, quote_rect)
+            
+            # Display author below the quote
+            author_line = f"{game.author}"
+            author_surf = MAIN_FONT.render(author_line, True, CORRECT_COLOR)
+            author_rect = author_surf.get_rect(center=(WIDTH//2, HEIGHT//2 - 20 + len(quote_lines) * 30 + 30))
+            screen.blit(author_surf, author_rect)
             
             # Draw next level button
             next_level_button.draw(screen)
