@@ -3,6 +3,11 @@ import random
 import string
 import os
 import sys
+import pickle
+import pandas as pd
+import numpy as np
+import re
+
 
 # Initialize pygame
 pygame.init()
@@ -38,20 +43,11 @@ class GameState:
         self.new_game()
     
     def load_quotes(self):
-        """Load quotes from a file - replace with your actual loading code"""
-        # This is a placeholder, replace with the code you'll provide
-        quotes = [
-            "The greatest glory in living lies not in never falling but in rising every time we fall",
-            "The way to get started is to quit talking and begin doing",
-            "Your time is limited so do not waste it living someone else's life",
-            "If life were predictable it would cease to be life and be without flavor",
-            "If you look at what you have in life you will always have more",
-            "Life is what happens when you are busy making other plans",
-            "The future belongs to those who believe in the beauty of their dreams",
-            "It is during our darkest moments that we must focus to see the light. This is a very long quote that will need to be wrapped across multiple lines to test the text wrapping functionality in our decryption game.",
-            "Do not go where the path may lead, go instead where there is no path and leave a trail for others to follow in your footsteps.",
-            "Success is not final, failure is not fatal: it is the courage to continue that counts in the face of all adversity."
-        ]
+
+        with open('quotes.pkl', 'rb') as f:
+            data = pickle.load(f)
+        quotes = list(data['quote_cleaned'])
+
         return quotes
     
     def new_game(self):
@@ -95,10 +91,6 @@ class GameState:
         alphabet = list(string.ascii_uppercase)
         shuffled = list(string.ascii_uppercase)
         random.shuffle(shuffled)
-        
-        # Ensure at least 5 letters are different
-        while sum(1 for a, b in zip(alphabet, shuffled) if a == b) > 21:
-            random.shuffle(shuffled)
             
         return {a: b for a, b in zip(alphabet, shuffled)}
     
