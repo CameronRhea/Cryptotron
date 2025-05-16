@@ -8,7 +8,7 @@ import sys
 pygame.init()
 
 # Constants
-WIDTH, HEIGHT = 1000, 600
+WIDTH, HEIGHT = 1800, 1000
 BACKGROUND_COLOR = (30, 30, 50)
 TEXT_COLOR = (240, 240, 240)
 HIGHLIGHT_COLOR = (100, 200, 100)
@@ -260,9 +260,9 @@ def main():
     next_level_button = Button(WIDTH//2 - 65, HEIGHT//2 + 50, 130, 40, "Next Level", 
                               lambda: next_level(game))
     
-    # Draw alphabet selection
-    # Position the alphabet at the bottom of the screen, accounting for wrapped text
-    alphabet_y = min(HEIGHT - 100, instruction_y + 60)
+    # Define the alphabet position at the bottom of the screen 
+    # Fixed position - no longer depends on instruction_y
+    alphabet_y = HEIGHT - 100  
     alphabet_buttons = []
     for i, letter in enumerate(string.ascii_uppercase):
         x = 50 + (i % 13) * 40
@@ -312,8 +312,8 @@ def main():
         # Constants for layout
         max_width = WIDTH - 150
         box_width = 30  # Fixed width for each box
-        line_height = 60  # Height between lines
-        first_line_y = 180  # Y position of the first line
+        line_height = 100  # Height between lines
+        first_line_y = 250  # Y position of the first line
         
         # Split text into lines
         lines = []
@@ -448,18 +448,18 @@ def main():
                 max_line_idx = max(max_line_idx, line_idx)
         
         # Draw letter boxes
-        cipher_label = MAIN_FONT.render("Cipher text:", True, TEXT_COLOR)
-        screen.blit(cipher_label, (50, 180))
+        # cipher_label = MAIN_FONT.render("Cipher text:", True, TEXT_COLOR)
+        # screen.blit(cipher_label, (50, 180))
         
-        plain_label = MAIN_FONT.render("Your decryption:", True, TEXT_COLOR)
-        screen.blit(plain_label, (50, 130))
+        # plain_label = MAIN_FONT.render("Your decryption:", True, TEXT_COLOR)
+        # screen.blit(plain_label, (50, 130))
         
         for box in letter_boxes:
             box.draw(screen, game.player_map)
         
         # Draw current decrypted text status - position below all lines
         base_y = 180 + (max_line_idx + 1) * 60 + 20
-        decryption_surf = MAIN_FONT.render("Current decryption:", True, TEXT_COLOR)
+        decryption_surf = MAIN_FONT.render("Plaintext:", True, TEXT_COLOR)
         screen.blit(decryption_surf, (50, base_y))
         
         # Draw the actual decrypted text - wrap it if needed
@@ -483,8 +483,16 @@ def main():
             text_surf = MAIN_FONT.render(line, True, HIGHLIGHT_COLOR)
             screen.blit(text_surf, (50, base_y + 40 + i * 30))
         
-        # Draw instruction
+        # Draw instruction - after drawing decryption text
         instruction_y = base_y + 40 + len(wrapped_text) * 30 + 10
+        
+        # Check if alphabet buttons might overlap with instructions
+        # If so, dynamically adjust their position
+        if alphabet_y < instruction_y + 40:  # If alphabet would overlap instructions
+            # Redraw alphabet buttons at a position below instructions
+            for i, button in enumerate(alphabet_buttons):
+                button.rect.y = instruction_y + 50 + (i // 13) * 50  # Move below instructions
+        
         if game.selected_cipher_char:
             instruction = f"Selected '{game.selected_cipher_char}' - choose a letter to replace it"
             instruction_surf = MAIN_FONT.render(instruction, True, HIGHLIGHT_COLOR)
